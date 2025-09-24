@@ -1,0 +1,52 @@
+# Godot-specific ignores
+.import/
+export.cfg
+export_presets.cfg
+
+# Imported translations (automatically generated from CSV files)
+*.translation
+
+# Mono-specific ignores (if using C# in future)
+.mono/
+data_*/
+mono_crash.*.json
+
+# Test files
+*.mp4
+*.ogv
+
+# Save files
+*.lymo
+
+# System/OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+builds/
+dist/
+*.tmp
+*.log
+
+# Platform-specific export templates
+*.exe
+*.pck
+*.zip
+*.dmg
+*.app
+
+# User-specific
+.godot/
+override.cfg

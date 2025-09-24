@@ -1,0 +1,29 @@
+[gd_scene load_steps=2 format=3 uid="uid://bcyvmahqfhj1m"]
+
+[ext_resource type="Script" path="res://scripts/dialogs/HelpDialog.gd" id="1_dv5ch"]
+
+[node name="HelpDialog" type="AcceptDialog"]
+size = Vector2i(800, 600)
+script = ExtResource("1_dv5ch")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -36.0
+
+[node name="ScrollContainer" type="ScrollContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="ShortcutsText" type="RichTextLabel" parent="VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false

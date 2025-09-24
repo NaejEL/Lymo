@@ -1,0 +1,56 @@
+[gd_scene load_steps=2 format=3 uid="uid://e8k3l6m9n2o5p"]
+
+[ext_resource type="Script" path="res://scripts/components/SettingsPanelController.gd" id="1_6i4l0"]
+
+[node name="SettingsPanel" type="Control"]
+layout_mode = 2
+custom_minimum_size = Vector2(300, 0)
+script = ExtResource("1_6i4l0")
+
+[node name="ScrollContainer" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TitleLabel" type="Label" parent="ScrollContainer/VBoxContainer"]
+layout_mode = 2
+text = "Surface Properties"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="SurfaceInfo" type="VBoxContainer" parent="ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="SurfaceLabel" type="Label" parent="ScrollContainer/VBoxContainer/SurfaceInfo"]
+layout_mode = 2
+text = "No surface selected"
+
+[node name="HSeparator2" type="HSeparator" parent="ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="SurfaceProperties" type="VBoxContainer" parent="ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="ScrollContainer/VBoxContainer/SurfaceProperties"]
+layout_mode = 2
+text = "Name:"
+
+[node name="NameInput" type="LineEdit" parent="ScrollContainer/VBoxContainer/SurfaceProperties"]
+layout_mode = 2
+placeholder_text = "Surface name..."
+
+[node name="ColorLabel" type="Label" parent="ScrollContainer/VBoxContainer/SurfaceProperties"]
+layout_mode = 2
+text = "Color:"
+
+[node name="ColorPicker" type="ColorPicker" parent="ScrollContainer/VBoxContainer/SurfaceProperties"]
+layout_mode = 2

@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3 uid="uid://c3k7m5n8p9q2r"]
+
+[ext_resource type="Script" path="res://scripts/components/MappingCanvasController.gd" id="1_2f4g8"]
+
+[node name="MappingCanvas" type="Control"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("1_2f4g8")

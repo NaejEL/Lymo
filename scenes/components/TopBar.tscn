@@ -1,0 +1,255 @@
+[gd_scene load_steps=2 format=3 uid="uid://b1hqn2d5wkm4u"]
+
+[ext_resource type="Script" path="res://scripts/components/TopBarController.gd" id="1_0d5jk"]
+
+[node name="TopBar" type="Control"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 40)
+script = ExtResource("1_0d5jk")
+
+[node name="HBoxContainer" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="FileMenuButton" type="MenuButton" parent="HBoxContainer"]
+layout_mode = 2
+text = "File"
+
+[node name="HSeparator" type="VSeparator" parent="HBoxContainer"]
+layout_mode = 2
+
+[node name="PlayButton" type="Button" parent="HBoxContainer"]
+layout_mode = 2
+text = "Play"
+
+[node name="StopButton" type="Button" parent="HBoxContainer"]
+layout_mode = 2
+text = "Stop"
+disabled = true
+
+[node name="HSeparator3" type="VSeparator" parent="HBoxContainer"]
+layout_mode = 2
+
+[node name="ViewLabel" type="Label" parent="HBoxContainer"]
+layout_mode = 2
+text = "View:"
+vertical_alignment = 1
+
+[node name="ViewToggle" type="Button" parent="HBoxContainer"]
+layout_mode = 2
+text = "Grid"
+tooltip_text = "Toggle background view (Black/Grid)"
+
+[node name="GridSettingsButton" type="Button" parent="HBoxContainer"]
+layout_mode = 2
+text = "⚙"
+tooltip_text = "Grid Settings"
+
+[node name="HSeparator5" type="VSeparator" parent="HBoxContainer"]
+layout_mode = 2
+
+[node name="HelpButton" type="Button" parent="HBoxContainer"]
+layout_mode = 2
+text = "Help"
+tooltip_text = "Keyboard shortcuts and help"
+
+[node name="HSeparator6" type="VSeparator" parent="HBoxContainer"]
+layout_mode = 2
+
+[node name="Spacer" type="Control" parent="HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HSeparator4" type="VSeparator" parent="HBoxContainer"]
+layout_mode = 2
+
+[node name="OutputLabel" type="Label" parent="HBoxContainer"]
+layout_mode = 2
+text = "Output:"
+vertical_alignment = 1
+
+[node name="DisplaySelector" type="OptionButton" parent="HBoxContainer"]
+layout_mode = 2
+tooltip_text = "Select output display"
+
+[node name="OutputToggle" type="Button" parent="HBoxContainer"]
+layout_mode = 2
+text = "Show Output"
+tooltip_text = "Toggle output window (F11)"
+
+[node name="FullscreenButton" type="Button" parent="HBoxContainer"]
+layout_mode = 2
+text = "Fullscreen"
+tooltip_text = "Toggle output fullscreen"
+disabled = true
+
+[node name="GridSettingsPopup" type="PopupPanel" parent="."]
+size = Vector2i(320, 450)
+
+[node name="GridSettingsContainer" type="VBoxContainer" parent="GridSettingsPopup"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+
+[node name="GridSettingsTitle" type="Label" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+text = "Grid Settings"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="GridSizeContainer" type="HBoxContainer" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="GridSizeLabel" type="Label" parent="GridSettingsPopup/GridSettingsContainer/GridSizeContainer"]
+layout_mode = 2
+text = "Grid Size:"
+size_flags_horizontal = 3
+
+[node name="GridSizeSpinBox" type="SpinBox" parent="GridSettingsPopup/GridSettingsContainer/GridSizeContainer"]
+layout_mode = 2
+min_value = 5.0
+max_value = 100.0
+step = 5.0
+value = 20.0
+
+[node name="GridOpacityContainer" type="HBoxContainer" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="GridOpacityLabel" type="Label" parent="GridSettingsPopup/GridSettingsContainer/GridOpacityContainer"]
+layout_mode = 2
+text = "Grid Opacity:"
+size_flags_horizontal = 3
+
+[node name="GridOpacitySlider" type="HSlider" parent="GridSettingsPopup/GridSettingsContainer/GridOpacityContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.1
+max_value = 1.0
+step = 0.1
+value = 0.8
+
+[node name="GridColorContainer" type="HBoxContainer" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="GridColorLabel" type="Label" parent="GridSettingsPopup/GridSettingsContainer/GridColorContainer"]
+layout_mode = 2
+text = "Grid Color:"
+size_flags_horizontal = 3
+
+[node name="GridColorPicker" type="ColorPickerButton" parent="GridSettingsPopup/GridSettingsContainer/GridColorContainer"]
+layout_mode = 2
+color = Color(0.9, 0.95, 1, 0.8)
+
+[node name="SnapToGridContainer" type="HBoxContainer" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="SnapToGridCheckBox" type="CheckBox" parent="GridSettingsPopup/GridSettingsContainer/SnapToGridContainer"]
+layout_mode = 2
+text = "Snap to Grid"
+
+[node name="HSeparator2" type="HSeparator" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="SurfaceSelectionTitle" type="Label" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+text = "Surface Selection"
+horizontal_alignment = 1
+
+[node name="CornerToleranceContainer" type="HBoxContainer" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="CornerToleranceLabel" type="Label" parent="GridSettingsPopup/GridSettingsContainer/CornerToleranceContainer"]
+layout_mode = 2
+text = "Corner Tolerance:"
+size_flags_horizontal = 3
+
+[node name="CornerToleranceSpinBox" type="SpinBox" parent="GridSettingsPopup/GridSettingsContainer/CornerToleranceContainer"]
+layout_mode = 2
+min_value = 5.0
+max_value = 50.0
+step = 1.0
+value = 20.0
+
+[node name="EdgeToleranceContainer" type="HBoxContainer" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="EdgeToleranceLabel" type="Label" parent="GridSettingsPopup/GridSettingsContainer/EdgeToleranceContainer"]
+layout_mode = 2
+text = "Edge Tolerance:"
+size_flags_horizontal = 3
+
+[node name="EdgeToleranceSpinBox" type="SpinBox" parent="GridSettingsPopup/GridSettingsContainer/EdgeToleranceContainer"]
+layout_mode = 2
+min_value = 2.0
+max_value = 20.0
+step = 1.0
+value = 8.0
+
+[node name="HandleSizeContainer" type="HBoxContainer" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="HandleSizeLabel" type="Label" parent="GridSettingsPopup/GridSettingsContainer/HandleSizeContainer"]
+layout_mode = 2
+text = "Handle Size:"
+size_flags_horizontal = 3
+
+[node name="HandleSizeSpinBox" type="SpinBox" parent="GridSettingsPopup/GridSettingsContainer/HandleSizeContainer"]
+layout_mode = 2
+min_value = 6.0
+max_value = 20.0
+step = 1.0
+value = 10.0
+
+[node name="HSeparator3" type="HSeparator" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="TransformHandlesTitle" type="Label" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+text = "Transformation Handles"
+horizontal_alignment = 1
+
+[node name="TransformHandlesEnabledContainer" type="HBoxContainer" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="TransformHandlesEnabledCheckBox" type="CheckBox" parent="GridSettingsPopup/GridSettingsContainer/TransformHandlesEnabledContainer"]
+layout_mode = 2
+text = "Enable Transform Handles"
+
+[node name="TransformHandleSizeContainer" type="HBoxContainer" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="TransformHandleSizeLabel" type="Label" parent="GridSettingsPopup/GridSettingsContainer/TransformHandleSizeContainer"]
+layout_mode = 2
+text = "Transform Handle Size:"
+size_flags_horizontal = 3
+
+[node name="TransformHandleSizeSpinBox" type="SpinBox" parent="GridSettingsPopup/GridSettingsContainer/TransformHandleSizeContainer"]
+layout_mode = 2
+min_value = 8.0
+max_value = 24.0
+step = 1.0
+value = 12.0
+
+[node name="TransformHandleOffsetContainer" type="HBoxContainer" parent="GridSettingsPopup/GridSettingsContainer"]
+layout_mode = 2
+
+[node name="TransformHandleOffsetLabel" type="Label" parent="GridSettingsPopup/GridSettingsContainer/TransformHandleOffsetContainer"]
+layout_mode = 2
+text = "Transform Handle Offset:"
+size_flags_horizontal = 3
+
+[node name="TransformHandleOffsetSpinBox" type="SpinBox" parent="GridSettingsPopup/GridSettingsContainer/TransformHandleOffsetContainer"]
+layout_mode = 2
+min_value = 15.0
+max_value = 50.0
+step = 5.0
+value = 25.0

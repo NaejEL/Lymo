@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://d7j2k5l8m1n4o"]
+
+[ext_resource type="Script" path="res://scripts/components/ProjectionSurface.gd" id="1_5h3k9"]
+
+[node name="ProjectionSurface" type="Control"]
+layout_mode = 3
+script = ExtResource("1_5h3k9")

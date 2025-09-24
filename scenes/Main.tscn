@@ -1,0 +1,36 @@
+[gd_scene load_steps=5 format=3 uid="uid://a1b2c3d4e5f6g"]
+
+[ext_resource type="Script" path="res://scripts/MainController.gd" id="1_main"]
+[ext_resource type="PackedScene" uid="uid://b1hqn2d5wkm4u" path="res://scenes/components/TopBar.tscn" id="2_topbar"]
+[ext_resource type="PackedScene" uid="uid://c3k7m5n8p9q2r" path="res://scenes/components/MappingCanvas.tscn" id="3_canvas"]
+[ext_resource type="PackedScene" uid="uid://e8k3l6m9n2o5p" path="res://scenes/components/SettingsPanel.tscn" id="4_settings"]
+
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_main")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TopBar" parent="VBoxContainer" instance=ExtResource("2_topbar")]
+layout_mode = 2
+
+[node name="ContentContainer" type="HSplitContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="MappingCanvas" parent="VBoxContainer/ContentContainer" instance=ExtResource("3_canvas")]
+layout_mode = 2
+
+[node name="SettingsPanel" parent="VBoxContainer/ContentContainer" instance=ExtResource("4_settings")]
+layout_mode = 2
