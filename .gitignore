@@ -14,6 +14,8 @@ mono_crash.*.json
 # Test files
 *.mp4
 *.ogv
+*.webm
+*.mov
 
 # Save files
 *.lymo

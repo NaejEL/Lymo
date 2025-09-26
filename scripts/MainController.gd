@@ -6,6 +6,9 @@ extends Control
 
 class_name MainController
 
+# Explicit imports to ensure loading order
+const TopBarController = preload("res://scripts/components/TopBarController.gd")
+
 # References to main UI components
 @onready var top_bar: TopBarController = $VBoxContainer/TopBar
 @onready var content_container: HSplitContainer = $VBoxContainer/ContentContainer
@@ -25,6 +28,7 @@ func _ready() -> void:
 	# Initialize the application
 	_setup_managers()
 	_connect_signals()
+	_load_window_settings()
 	_setup_window()
 	
 	# Load default project or prompt user
@@ -53,6 +57,7 @@ func _connect_signals() -> void:
 		top_bar.file_new_requested.connect(_on_file_new_requested)
 		top_bar.file_open_requested.connect(_on_file_open_requested)
 		top_bar.file_save_requested.connect(_on_file_save_requested)
+		top_bar.file_save_as_requested.connect(_on_file_save_as_requested)
 		top_bar.play_all_requested.connect(_on_play_all_requested)
 		top_bar.stop_all_requested.connect(_on_stop_all_requested)
 		
@@ -88,21 +93,43 @@ func _connect_signals() -> void:
 	if mapping_canvas and settings_panel:
 		mapping_canvas.surface_selected.connect(settings_panel.show_surface_properties)
 		mapping_canvas.surface_deselected.connect(settings_panel.clear_properties)
+	
+	# Initialize canvas with default output resolution
+	_initialize_canvas_aspect_ratio()
 
 func _setup_window() -> void:
-	"""Configure main window properties"""
-	# Set minimum window size for usability
-	get_window().min_size = Vector2i(800, 600)
+	"""Configure main window properties with proper scaling and sizing"""
+	var window = get_window()
 	
-	# Configure split container
+	# Set minimum window size for usability
+	window.min_size = Vector2i(1000, 700)  # Increased from 800x600 for better UX
+	
+	# Set reasonable default size based on screen size
+	var primary_screen = DisplayServer.screen_get_usable_rect(0)
+	var default_width = min(1400, int(primary_screen.size.x * 0.8))  # 80% of screen width, max 1400
+	var default_height = min(900, int(primary_screen.size.y * 0.8))  # 80% of screen height, max 900
+	
+	window.size = Vector2i(default_width, default_height)
+	
+	# Center window on primary display
+	var center_x = primary_screen.position.x + (primary_screen.size.x - default_width) / 2
+	var center_y = primary_screen.position.y + (primary_screen.size.y - default_height) / 2
+	window.position = Vector2i(center_x, center_y)
+	
+	# Disable content scaling to provide more workspace instead of bigger widgets
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
+	
+	print("MainWindow: Set default size to ", window.size, " on screen ", primary_screen.size)
+	
+	# Configure split container with proportional sizing
 	if content_container:
-		content_container.split_offset = 900  # Give more space to mapping canvas
-		
-	# Add temporary background colors for debugging
-	if top_bar:
-		top_bar.modulate = Color.LIGHT_BLUE
-	if settings_panel:
-		settings_panel.modulate = Color.LIGHT_GREEN
+		# Give mapping canvas 70% of the window width (more space for editing)
+		var canvas_width = int(default_width * 0.7)
+		content_container.split_offset = canvas_width
+		print("MainWindow: Set split offset to ", canvas_width)
+	
+	# Connect window resize signal for responsive layout updates
+	window.size_changed.connect(_on_window_resized)
 
 func _initialize_project() -> void:
 	"""Initialize with empty project or load last project"""
@@ -126,7 +153,13 @@ func _on_file_save_requested() -> void:
 	"""Handle save project request from top bar"""
 	if project_manager and mapping_canvas:
 		var project_data = mapping_canvas.get_project_data()
-		project_manager.show_save_dialog(project_data)
+		project_manager.save_project(project_data)  # Use save_project, not show_save_dialog
+
+func _on_file_save_as_requested() -> void:
+	"""Handle save as project request from top bar"""
+	if project_manager and mapping_canvas:
+		var project_data = mapping_canvas.get_project_data()
+		project_manager.show_save_as_dialog(project_data)
 
 func _on_play_all_requested() -> void:
 	"""Handle play all request from top bar - start all surface videos"""
@@ -219,6 +252,7 @@ func create_output_window() -> void:
 	
 	# Connect signals
 	output_window.output_window_closed.connect(_on_output_window_closed)
+	output_window.output_resolution_changed.connect(_on_output_resolution_changed)
 	
 	# Sync view mode with main canvas
 	if mapping_canvas:
@@ -334,11 +368,20 @@ func _on_output_toggle_requested() -> void:
 
 func _on_display_changed(display_index: int) -> void:
 	"""Handle display selection change"""
+	# Always update canvas preview for the selected display, regardless of output window state
+	var screen_size = DisplayServer.screen_get_size(display_index)
+	var display_resolution = Vector2i(screen_size.x, screen_size.y)
+	
+	if mapping_canvas:
+		mapping_canvas.set_target_aspect_ratio(display_resolution)
+		print("MainController: Updated canvas preview for display ", display_index, " (", display_resolution, ")")
+	
+	# Also update output window if it exists
 	if output_window:
 		output_window.set_target_display(display_index)
-		print("MainController: Changed output to display ", display_index)
+		print("MainController: Changed output window to display ", display_index)
 	else:
-		print("MainController: Display changed to ", display_index, " but no output window exists")
+		print("MainController: Display changed to ", display_index, " - canvas updated, no output window yet")
 
 func _on_fullscreen_requested() -> void:
 	"""Handle fullscreen toggle request"""
@@ -347,6 +390,14 @@ func _on_fullscreen_requested() -> void:
 		print("MainController: Toggled output fullscreen")
 	else:
 		print("MainController: Fullscreen requested but no output window exists")
+
+func _on_output_resolution_changed(resolution: Vector2i) -> void:
+	"""Handle output resolution change and update canvas aspect ratio"""
+	if mapping_canvas:
+		mapping_canvas.set_target_aspect_ratio(resolution)
+		print("MainController: Updated canvas aspect ratio to match ", resolution)
+	else:
+		print("MainController: Resolution changed to ", resolution, " but no canvas available")
 
 func _on_project_loaded(data: Dictionary) -> void:
 	"""Handle project loaded from file"""
@@ -357,3 +408,66 @@ func _on_project_loaded(data: Dictionary) -> void:
 func _on_project_saved(path: String) -> void:
 	"""Handle project saved to file"""
 	print("MainController: Project saved to ", path)
+
+func _initialize_canvas_aspect_ratio() -> void:
+	"""Initialize canvas with the appropriate aspect ratio for the selected display"""
+	if not mapping_canvas:
+		return
+	
+	# Get the current selected display from top bar
+	var selected_display = 0  # Default to primary display
+	if top_bar and top_bar.display_selector:
+		selected_display = top_bar.display_selector.selected
+	
+	# Get the resolution for that display
+	var screen_size = DisplayServer.screen_get_size(selected_display)
+	var display_resolution = Vector2i(screen_size.x, screen_size.y)
+	
+	print("MainController: Initializing canvas with display ", selected_display, " resolution: ", display_resolution)
+	mapping_canvas.set_target_aspect_ratio(display_resolution)
+
+func _on_window_resized() -> void:
+	"""Handle main window resize for responsive layout updates"""
+	var window = get_window()
+	var new_size = window.size
+	
+	# Update split container proportions based on new window size
+	if content_container and new_size.x > 0:
+		# Maintain 70% for canvas, 30% for settings panel
+		var canvas_width = int(new_size.x * 0.7)
+		content_container.split_offset = canvas_width
+	
+	# Notify canvas of size changes and handle scaling adjustments
+	if mapping_canvas:
+		# Give canvas a frame to adjust to new size
+		await get_tree().process_frame
+		mapping_canvas.handle_window_scaling_change()
+		mapping_canvas.queue_redraw()
+	
+	# Save window settings when size changes
+	_save_window_settings()
+
+# Settings persistence methods
+func _load_window_settings() -> void:
+	"""Load window settings from persistence"""
+	var settings = SettingsManager.get_instance()
+	var window_size = settings.get_window_size()
+	
+	# Apply window size if it's reasonable
+	if window_size.x > 800 and window_size.y > 600:
+		get_window().size = window_size
+
+func _save_window_settings() -> void:
+	"""Save current window settings to persistence"""
+	var settings = SettingsManager.get_instance()
+	var current_size = get_window().size
+	
+	settings.set_window_size(current_size)
+	
+	# Save split offset if available
+	if content_container:
+		settings.set_split_offset(content_container.split_offset)
+	
+	settings.save_settings()
+	
+	print("MainWindow: Resized to ", current_size, " - updated layout proportions and canvas scaling")

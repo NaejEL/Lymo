@@ -15,17 +15,17 @@ var surface_z_index: int = 0  # Layer order (higher values appear on top)
 # Visual properties
 var surface_color := Color.WHITE
 var surface_opacity := 1.0  # Opacity from 0.0 (transparent) to 1.0 (opaque)
-var border_color := Color.CYAN  # Standard cyan border
-var selected_border_color := Color.YELLOW  # Standard yellow for selection
-var handle_color := Color.RED  # Standard red handles
+var border_color := Colors.SURFACE_BORDER  # Use centralized color constants
+var selected_border_color := Colors.SURFACE_SELECTED  # Use centralized color constants
+var handle_color := Colors.SURFACE_HANDLES  # Use centralized color constants
 var handle_size := 10.0  # Increased from 8.0 for better visibility
 var handle_hit_area := 20.0  # Increased from 16.0 for easier selection
 var handle_border_width := 2.0  # Border width for handles
 
 # Enhanced visual feedback
-var hover_border_color := Color.LIGHT_BLUE  # Light blue for hover
-var dragging_border_color := Color.ORANGE  # Orange when dragging
-var locked_border_color := Color.RED  # Red for locked surfaces
+var hover_border_color := Colors.SURFACE_HOVER  # Use centralized color constants
+var dragging_border_color := Colors.SURFACE_DRAGGING  # Use centralized color constants
+var locked_border_color := Colors.SURFACE_LOCKED  # Use centralized color constants
 var show_surface_info := true  # Show surface info overlay
 var show_coordinate_overlay := false  # Show corner coordinates
 var show_distance_indicators := false  # Show distances between corners
@@ -54,6 +54,18 @@ var video_texture: Texture2D = null
 var video_player: VideoStreamPlayer = null
 var video_file_path: String = ""
 var is_video_loaded: bool = false
+var video_has_alpha: bool = false  # Track if the current video contains alpha channel
+
+# Chroma key properties (color keying/green screen effect)
+var chroma_key_enabled: bool = false  # Enable/disable chroma key effect
+var chroma_key_color: Color = Color.GREEN  # Color to make transparent (default green)
+var chroma_key_threshold: float = 0.1  # Color similarity threshold (0.0-1.0)
+var chroma_key_smoothness: float = 0.05  # Edge smoothness for better blending (0.0-1.0)
+
+# Shader materials for effects
+var chroma_key_material: ShaderMaterial = null
+var chroma_key_shader: Shader = null
+var chroma_key_rect: ColorRect = null  # Child node for shader effect
 
 # Transformation handles
 enum TransformHandleType {
@@ -67,11 +79,23 @@ enum TransformHandleType {
 
 var show_transform_handles := false  # Show transformation handles when selected
 var transform_handle_size := 12.0   # Size of transformation handles
-var transform_handle_color := Color.MAGENTA  # Standard magenta for transform handles
+var transform_handle_color := Colors.SURFACE_TRANSFORM_HANDLES  # Use centralized color constants
 var transform_handle_offset := 25.0  # Distance from corners for rotation handles
 var dragging_transform_handle := TransformHandleType.NONE
 var transform_center := Vector2.ZERO  # Center point for transformations
 var initial_transform_state := {}  # Store initial state for transformations
+
+# Centralized editing operations - single source of truth
+enum EditOperationType {
+	NONE,
+	MOVE_CORNER,
+	MOVE_SURFACE,
+	SCALE_SURFACE,
+	ROTATE_SURFACE
+}
+
+var current_edit_operation := EditOperationType.NONE
+var edit_operation_data := {}  # Store operation-specific data
 
 # Signals
 signal selected(surface: ProjectionSurface)
@@ -83,6 +107,33 @@ func _ready() -> void:
 	# Only set default name if no name has been loaded
 	if surface_name == "":
 		surface_name = "Surface " + str(get_instance_id())
+	
+	# Initialize chroma key shader
+	_setup_chroma_key_shader()
+
+func _setup_chroma_key_shader() -> void:
+	"""Initialize the chroma key shader and material"""
+	# Load the proper chroma key shader
+	chroma_key_shader = load("res://shaders/chroma_key.gdshader")
+	if chroma_key_shader:
+		chroma_key_material = ShaderMaterial.new()
+		chroma_key_material.shader = chroma_key_shader
+		_update_chroma_key_uniforms()
+		print("ProjectionSurface: Chroma key shader initialized")
+	else:
+		print("ProjectionSurface: ERROR - Failed to load chroma key shader")
+
+func _update_chroma_key_uniforms() -> void:
+	"""Update chroma key shader uniforms with current values"""
+	if chroma_key_material:
+		chroma_key_material.set_shader_parameter("chroma_key_enabled", chroma_key_enabled)
+		chroma_key_material.set_shader_parameter("chroma_key_color", chroma_key_color)
+		chroma_key_material.set_shader_parameter("threshold", chroma_key_threshold)
+		chroma_key_material.set_shader_parameter("smoothness", chroma_key_smoothness)
+		chroma_key_material.set_shader_parameter("surface_opacity", surface_opacity)
+		if video_texture:
+			chroma_key_material.set_shader_parameter("video_texture", video_texture)
+		print("ProjectionSurface: Updated chroma key uniforms - enabled: ", chroma_key_enabled, ", color: ", chroma_key_color, ", threshold: ", chroma_key_threshold)
 
 func _mouse_exited() -> void:
 	"""Clear hover state when mouse leaves the surface"""
@@ -105,30 +156,150 @@ func initialize_surface(center_position: Vector2, surface_size: Vector2) -> void
 	_update_surface_bounds()
 	queue_redraw()
 
+# CENTRALIZED SURFACE OPERATIONS - Single source of truth for all editing
+# All input methods (mouse, keyboard, API) must use these functions
+
+func can_edit() -> bool:
+	"""Check if surface can be edited (not locked, valid state, etc.)"""
+	if is_locked:
+		return false
+	return true
+
+func request_corner_move(corner_index: int, new_position: Vector2) -> bool:
+	"""Request to move a corner to a new position. Returns true if successful."""
+	if not can_edit():
+		return false
+	if corner_index < 0 or corner_index >= corner_points.size():
+		return false
+	
+	return _execute_corner_move(corner_index, new_position)
+
+func request_corner_offset(corner_index: int, offset: Vector2) -> bool:
+	"""Request to move a corner by an offset. Returns true if successful."""
+	if not can_edit():
+		return false
+	if corner_index < 0 or corner_index >= corner_points.size():
+		return false
+	
+	var new_position = corner_points[corner_index] + offset
+	return _execute_corner_move(corner_index, new_position)
+
+func request_surface_move(offset: Vector2) -> bool:
+	"""Request to move entire surface by offset. Returns true if successful."""
+	if not can_edit():
+		return false
+	
+	return _execute_surface_move(offset)
+
+func request_surface_scale(scale_factor: float, center_point: Vector2 = Vector2.ZERO) -> bool:
+	"""Request to scale surface. Returns true if successful."""
+	if not can_edit():
+		return false
+	if scale_factor <= 0:
+		return false
+	
+	if center_point == Vector2.ZERO:
+		center_point = _get_surface_center()
+	
+	return _execute_surface_scale(scale_factor, center_point)
+
+func request_surface_rotation(angle_delta: float, center_point: Vector2 = Vector2.ZERO) -> bool:
+	"""Request to rotate surface. Returns true if successful."""
+	if not can_edit():
+		return false
+	
+	if center_point == Vector2.ZERO:
+		center_point = _get_surface_center()
+	
+	return _execute_surface_rotation(angle_delta, center_point)
+
+# Internal execution functions
+func _execute_corner_move(corner_index: int, new_position: Vector2) -> bool:
+	"""Internal: Execute corner move with bounds checking and updates"""
+	# TODO: Add bounds checking if needed
+	corner_points[corner_index] = new_position
+	_update_surface_bounds()
+	properties_changed.emit()
+	queue_redraw()
+	return true
+
+func _execute_surface_move(offset: Vector2) -> bool:
+	"""Internal: Execute surface move with bounds checking and updates"""
+	for i in range(corner_points.size()):
+		corner_points[i] += offset
+	_update_surface_bounds()
+	properties_changed.emit()
+	queue_redraw()
+	return true
+
+func _execute_surface_scale(scale_factor: float, center_point: Vector2) -> bool:
+	"""Internal: Execute surface scaling around center point"""
+	for i in range(corner_points.size()):
+		var relative_pos = corner_points[i] - center_point
+		corner_points[i] = center_point + relative_pos * scale_factor
+	_update_surface_bounds()
+	properties_changed.emit()
+	queue_redraw()
+	return true
+
+func _execute_surface_rotation(angle_delta: float, center_point: Vector2) -> bool:
+	"""Internal: Execute surface rotation around center point"""
+	var cos_angle = cos(angle_delta)
+	var sin_angle = sin(angle_delta)
+	
+	for i in range(corner_points.size()):
+		var relative_pos = corner_points[i] - center_point
+		var rotated = Vector2(
+			relative_pos.x * cos_angle - relative_pos.y * sin_angle,
+			relative_pos.x * sin_angle + relative_pos.y * cos_angle
+		)
+		corner_points[i] = center_point + rotated
+	_update_surface_bounds()
+	properties_changed.emit()
+	queue_redraw()
+	return true
+
+func _get_surface_center() -> Vector2:
+	"""Internal: Get the center point of the surface"""
+	var center = Vector2.ZERO
+	for point in corner_points:
+		center += point
+	return center / corner_points.size()
+
 func _gui_input(event: InputEvent) -> void:
 	"""Handle mouse input for corner dragging and selection"""
 	# Prevent any modification when surface is locked
 	if is_locked:
-		if event is InputEventMouseButton and event.pressed:
-			# Still allow selection for locked surfaces, but prevent dragging
-			if event.button_index == MOUSE_BUTTON_LEFT:
+# Surface is locked - block all input
+		if event is InputEventMouseButton:
+			if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+				# Still allow selection for locked surfaces, but prevent dragging
 				var canvas_pos = event.position + position
 				if _point_in_surface(canvas_pos) or _get_corner_at_position(canvas_pos) >= 0:
 					# Allow selection but prevent dragging by consuming the event
+
 					selected.emit(self)
 					accept_event()
 					return
-			elif event.button_index == MOUSE_BUTTON_RIGHT:
+			elif event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 				# Allow context menu for locked surfaces (to unlock them)
-				var canvas_pos = event.position + position
+				var canvas_pos = event.position + position  
 				if _point_in_surface(canvas_pos) or _get_corner_at_position(canvas_pos) >= 0:
 					_show_context_menu(event.global_position)
 					accept_event()
 					return
-		elif event is InputEventMouseMotion:
-			# Block all mouse motion when locked to prevent dragging
+			# Block all other mouse button events (including releases)
+
 			accept_event()
 			return
+		elif event is InputEventMouseMotion:
+			# Block all mouse motion when locked to prevent dragging
+
+			accept_event()
+			return
+		# Block any other input events
+
+		accept_event()
 		return
 	
 	if event is InputEventMouseButton:
@@ -140,6 +311,7 @@ func _gui_input(event: InputEvent) -> void:
 				# Check for transformation handles first (highest priority)
 				var transform_handle = _get_transform_handle_at_position(canvas_pos)
 				if transform_handle != TransformHandleType.NONE:
+
 					dragging_transform_handle = transform_handle
 					# Store initial state for transformations
 					initial_transform_state = {
@@ -154,6 +326,7 @@ func _gui_input(event: InputEvent) -> void:
 				var corner_index = _get_corner_at_position(canvas_pos)
 				if corner_index >= 0:
 					# Start dragging corner immediately (selection handled by canvas first)
+
 					dragging_corner = corner_index
 					hovered_corner = -1  # Clear hover when dragging starts
 					drag_offset = canvas_pos - corner_points[corner_index]
@@ -162,6 +335,7 @@ func _gui_input(event: InputEvent) -> void:
 					# Check if clicking inside surface
 					if _point_in_surface(canvas_pos):
 						# Start dragging the whole surface immediately
+
 						dragging_surface = true
 						hovered_corner = -1  # Clear hover when dragging starts
 						drag_offset = canvas_pos - corner_points[0]  # Use top-left corner as reference
@@ -196,7 +370,18 @@ func _gui_input(event: InputEvent) -> void:
 					accept_event()
 	
 	elif event is InputEventMouseMotion:
+		# Additional safety check: prevent any dragging operations when locked
+		if is_locked:
+
+			accept_event()
+			return
+			
 		if dragging_transform_handle != TransformHandleType.NONE:
+			# Safety check: prevent transformation when locked
+			if is_locked:
+				dragging_transform_handle = TransformHandleType.NONE  # Reset dragging state
+				accept_event()
+				return
 			# Handle transformation dragging
 			var canvas_pos = event.position + position
 			var initial_mouse_pos = initial_transform_state.mouse_pos
@@ -222,22 +407,21 @@ func _gui_input(event: InputEvent) -> void:
 			
 			accept_event()
 		elif dragging_corner >= 0:
-			# Convert local position to canvas position
+			# Use centralized corner move operation
 			var canvas_pos = event.position + position
-			# Update corner position directly with canvas coordinates
-			corner_points[dragging_corner] = canvas_pos - drag_offset
-			queue_redraw()
+			var new_corner_pos = canvas_pos - drag_offset
+			if not request_corner_move(dragging_corner, new_corner_pos):
+				# Operation failed (likely due to lock), reset drag state
+				dragging_corner = -1
 			accept_event()  # Consume the event
 		elif dragging_surface:
-			# Move the entire surface
+			# Use centralized surface move operation
 			var canvas_pos = event.position + position
 			var new_reference_pos = canvas_pos - drag_offset
 			var offset = new_reference_pos - corner_points[0]
-			
-			# Move all corners by the same offset
-			for i in range(corner_points.size()):
-				corner_points[i] += offset
-			queue_redraw()
+			if not request_surface_move(offset):
+				# Operation failed (likely due to lock), reset drag state
+				dragging_surface = false
 			accept_event()  # Consume the event
 		else:
 			# Update cursor and hover state
@@ -258,6 +442,9 @@ func _gui_input(event: InputEvent) -> void:
 
 func start_dragging_at_canvas_position(canvas_position: Vector2) -> void:
 	"""Start dragging (corner or surface) at the given canvas position"""
+	if is_locked:
+		return
+		
 	# Reset any existing dragging state first
 	reset_dragging_state()
 	
@@ -270,7 +457,7 @@ func start_dragging_at_canvas_position(canvas_position: Vector2) -> void:
 		# Calculate precise drag offset
 		drag_offset = canvas_position - corner_points[corner_index]
 		last_drag_position = canvas_position
-		print("Started dragging corner ", corner_index, " at ", canvas_position)
+
 	else:
 		# Check if clicking inside surface (and surface selection is enabled)
 		if surface_selection_enabled and _point_in_surface(canvas_position):
@@ -282,10 +469,11 @@ func start_dragging_at_canvas_position(canvas_position: Vector2) -> void:
 			drag_offset = canvas_position - corner_points[0]
 			last_drag_position = canvas_position
 			drag_accumulator = Vector2.ZERO
-			print("Started dragging surface at ", canvas_position)
+
 
 func handle_canvas_motion(canvas_position: Vector2) -> void:
 	"""Handle mouse motion at the given canvas position during dragging"""
+	# Use centralized operations for consistency and proper locking
 	if dragging_corner >= 0:
 		# Calculate new corner position
 		var target_pos = canvas_position - drag_offset
@@ -293,12 +481,11 @@ func handle_canvas_motion(canvas_position: Vector2) -> void:
 		# Apply smoothing if enabled
 		if drag_smoothing_enabled and last_drag_position != Vector2.ZERO:
 			var smooth_pos = corner_points[dragging_corner].lerp(target_pos, 1.0 - drag_smoothing_factor)
-			corner_points[dragging_corner] = smooth_pos
+			request_corner_move(dragging_corner, smooth_pos)
 		else:
-			corner_points[dragging_corner] = target_pos
+			request_corner_move(dragging_corner, target_pos)
 		
 		last_drag_position = canvas_position
-		queue_redraw()
 		
 	elif dragging_surface:
 		# Calculate movement offset for surface dragging
@@ -314,16 +501,13 @@ func handle_canvas_motion(canvas_position: Vector2) -> void:
 		
 		# Only apply movement if there's meaningful displacement
 		if offset.length() > minimum_drag_distance:
-			# Move all corners by the calculated offset
-			for i in range(corner_points.size()):
-				corner_points[i] += offset
+			request_surface_move(offset)
 			
 			# Reset accumulator after applying movement
 			if drag_smoothing_enabled:
 				drag_accumulator = Vector2.ZERO
 			
 			last_drag_position = canvas_position
-			queue_redraw()
 	else:
 		# Update cursor and hover state for non-dragging motion
 		var corner_index = _get_corner_at_position(canvas_position)
@@ -366,12 +550,14 @@ func end_dragging_at_canvas_position(canvas_position: Vector2) -> void:
 		queue_redraw()
 
 func handle_keyboard_input(event: InputEventKey) -> bool:
-	"""Handle keyboard input for fine corner adjustment. Returns true if handled."""
-	# Prevent keyboard modifications when surface is locked
-	if is_locked:
+	"""Handle keyboard input for fine corner adjustment and surface movement. Returns true if handled."""
+	if not is_selected:
 		return false
-		
-	if not is_selected or selected_corner < 0:
+	
+	# If surface is locked, consume arrow keys to prevent UI navigation but don't move
+	if is_locked:
+		if event.pressed and event.keycode in [KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN]:
+			return true  # Consume the input without doing anything
 		return false
 	
 	if event.pressed:
@@ -394,13 +580,16 @@ func handle_keyboard_input(event: InputEventKey) -> bool:
 			_:
 				return false
 		
-		# Apply movement to selected corner
+		# Use centralized operations for consistency and proper locking
+		var success = false
 		if selected_corner >= 0 and selected_corner < corner_points.size():
-			corner_points[selected_corner] += movement
-			_update_surface_bounds()
-			properties_changed.emit()
-			queue_redraw()
-			return true
+			# Move individual corner using centralized operation
+			success = request_corner_offset(selected_corner, movement)
+		else:
+			# Move entire surface using centralized operation
+			success = request_surface_move(movement)
+		
+		return success
 	
 	return false
 
@@ -477,6 +666,8 @@ func set_feedback_colors(hover_color: Color, drag_color: Color) -> void:
 	hover_border_color = hover_color
 	dragging_border_color = drag_color
 	queue_redraw()
+
+
 
 func _get_corner_at_position(pos: Vector2) -> int:
 	"""Check if position is near a corner handle with improved precision"""
@@ -640,34 +831,11 @@ func _get_transform_handle_at_position(pos: Vector2) -> TransformHandleType:
 
 func _apply_rotation_transform(angle_delta: float, handle_type: TransformHandleType) -> void:
 	"""Apply rotation transformation around the surface center"""
-	var center = transform_center
-	
-	for i in range(corner_points.size()):
-		var point = corner_points[i]
-		var relative_pos = point - center
-		
-		# Rotate the relative position
-		var rotated = Vector2(
-			relative_pos.x * cos(angle_delta) - relative_pos.y * sin(angle_delta),
-			relative_pos.x * sin(angle_delta) + relative_pos.y * cos(angle_delta)
-		)
-		
-		corner_points[i] = center + rotated
-	
-	_update_surface_bounds()
-	queue_redraw()
+	_execute_surface_rotation(angle_delta, transform_center)
 
 func _apply_scale_transform(scale_factor: float) -> void:
 	"""Apply uniform scale transformation around the surface center"""
-	var center = transform_center
-	
-	for i in range(corner_points.size()):
-		var point = corner_points[i]
-		var relative_pos = point - center
-		corner_points[i] = center + relative_pos * scale_factor
-	
-	_update_surface_bounds()
-	queue_redraw()
+	_execute_surface_scale(scale_factor, transform_center)
 
 func _update_surface_bounds() -> void:
 	"""Update the control's position and size to encompass all corner points"""
@@ -709,6 +877,9 @@ func _draw() -> void:
 	if size.x <= 0 or size.y <= 0:
 		return
 	
+	# Ensure no material is applied to Control to avoid affecting borders/handles
+	material = null
+	
 	# Get font for text drawing throughout the method
 	var font = ThemeDB.fallback_font
 	
@@ -717,31 +888,12 @@ func _draw() -> void:
 	for point in corner_points:
 		local_points.append(point - position)
 	
-	# Draw the surface - either video texture or colored fill
+	# Create points array for border drawing and other UI elements
 	var points = PackedVector2Array(local_points)
 	
-	if video_texture != null:
-		# Draw video texture properly mapped to the quadrilateral surface
-		# Using UV coordinates for proper projection mapping
-		var uv_coords = PackedVector2Array([
-			Vector2(0, 0),      # Top-left UV
-			Vector2(1, 0),      # Top-right UV  
-			Vector2(1, 1),      # Bottom-right UV
-			Vector2(0, 1)       # Bottom-left UV
-		])
-		
-		# Draw the textured polygon with proper UV mapping and opacity
-		var vertex_colors = PackedColorArray([
-			Color(1, 1, 1, surface_opacity),
-			Color(1, 1, 1, surface_opacity),
-			Color(1, 1, 1, surface_opacity),
-			Color(1, 1, 1, surface_opacity)
-		])
-		draw_polygon(points, vertex_colors, uv_coords, video_texture)
-	else:
-		# Draw filled surface with solid color and opacity
-		var opaque_color = Color(surface_color.r, surface_color.g, surface_color.b, surface_color.a * surface_opacity)
-		draw_colored_polygon(points, opaque_color)
+	# Draw the surface content using shared renderer for consistency
+	var render_data = SurfaceRenderer.create_render_data_from_surface(self)
+	SurfaceRenderer.render_surface_content(self, render_data, position)
 	
 	# Draw border with enhanced feedback
 	var border_color_to_use = border_color
@@ -930,7 +1082,18 @@ func get_surface_data() -> Dictionary:
 		"surface_z_index": surface_z_index,
 		"video_file_path": video_file_path,
 		"has_video": is_video_loaded,
-		"is_locked": is_locked
+		"is_locked": is_locked,
+		"chroma_key": {
+			"enabled": chroma_key_enabled,
+			"color": {
+				"r": chroma_key_color.r,
+				"g": chroma_key_color.g,
+				"b": chroma_key_color.b,
+				"a": chroma_key_color.a
+			},
+			"threshold": chroma_key_threshold,
+			"smoothness": chroma_key_smoothness
+		}
 	}
 	
 	print("ProjectionSurface: Complete surface data: ", surface_data)
@@ -1000,6 +1163,20 @@ func load_surface_data(data: Dictionary) -> void:
 		else:
 			print("ProjectionSurface: Skipping video load - has_video: ", data["has_video"], ", path: '", data.video_file_path, "'")
 	
+	# Load chroma key data
+	if data.has("chroma_key"):
+		var chroma_data = data.chroma_key
+		if chroma_data.has("enabled"):
+			chroma_key_enabled = chroma_data.enabled
+		if chroma_data.has("color"):
+			var color_data = chroma_data.color
+			chroma_key_color = Color(color_data.r, color_data.g, color_data.b, color_data.a)
+		if chroma_data.has("threshold"):
+			chroma_key_threshold = chroma_data.threshold
+		if chroma_data.has("smoothness"):
+			chroma_key_smoothness = chroma_data.smoothness
+		print("ProjectionSurface: Loaded chroma key settings - enabled: ", chroma_key_enabled, ", color: ", chroma_key_color)
+	
 	queue_redraw()
 
 func set_video_texture(texture: Texture2D) -> void:
@@ -1010,8 +1187,55 @@ func set_video_texture(texture: Texture2D) -> void:
 		is_video_loaded = (texture != null)
 		print("ProjectionSurface: Video texture set, is_video_loaded: ", is_video_loaded)
 		queue_redraw()
+
+func set_video_alpha_flag(has_alpha: bool) -> void:
+	"""Set flag indicating if the current video contains alpha channel"""
+	if video_has_alpha != has_alpha:
+		video_has_alpha = has_alpha
+		print("ProjectionSurface: Video alpha flag set to: ", has_alpha)
+		queue_redraw()  # Redraw to apply new alpha handling
 	else:
 		print("ProjectionSurface: Video texture unchanged, skipping update")
+
+# Chroma key functions
+func set_chroma_key_enabled(enabled: bool) -> void:
+	"""Enable or disable chroma key effect"""
+	if chroma_key_enabled != enabled:
+		chroma_key_enabled = enabled
+		print("ProjectionSurface: Chroma key enabled: ", enabled, " - Material available: ", chroma_key_material != null)
+		queue_redraw()
+
+func set_chroma_key_color(color: Color) -> void:
+	"""Set the color to make transparent in chroma key effect"""
+	if chroma_key_color != color:
+		chroma_key_color = color
+		if chroma_key_enabled:
+			queue_redraw()
+
+func set_chroma_key_threshold(threshold: float) -> void:
+	"""Set chroma key color similarity threshold (0.0-1.0)"""
+	threshold = clamp(threshold, 0.0, 1.0)
+	if chroma_key_threshold != threshold:
+		chroma_key_threshold = threshold
+		if chroma_key_enabled:
+			queue_redraw()
+
+func set_chroma_key_smoothness(smoothness: float) -> void:
+	"""Set chroma key edge smoothness (0.0-1.0)"""
+	smoothness = clamp(smoothness, 0.0, 1.0)
+	if chroma_key_smoothness != smoothness:
+		chroma_key_smoothness = smoothness
+		if chroma_key_enabled:
+			queue_redraw()
+
+func get_chroma_key_settings() -> Dictionary:
+	"""Get current chroma key settings"""
+	return {
+		"enabled": chroma_key_enabled,
+		"color": chroma_key_color,
+		"threshold": chroma_key_threshold,
+		"smoothness": chroma_key_smoothness
+	}
 
 func _delayed_video_load(file_path: String) -> void:
 	"""Delayed video loading after surface is fully initialized"""
@@ -1078,11 +1302,31 @@ func clear_video() -> void:
 	video_texture = null
 	video_file_path = ""
 	is_video_loaded = false
+	video_has_alpha = false  # Reset alpha flag when clearing video
+	# Note: Chroma key settings are kept so user can apply them to next video
 	queue_redraw()
 	print("ProjectionSurface: Video cleared from surface '", surface_name, "'")
 
 func start_video_playback() -> void:
-	"""Start video playback for this surface"""
+	"""Start video playback for this surface (supports both VideoStreamPlayer and PNGSequencePlayer)"""
+	print("ProjectionSurface: start_video_playback called for surface '", surface_name, "'")
+	
+	# Check for PNG sequence player first
+	if has_meta("png_sequence_player"):
+		print("ProjectionSurface: Found PNG sequence player meta")
+		var png_player = get_meta("png_sequence_player")
+		if png_player:
+			print("ProjectionSurface: PNG player exists, calling play()")
+			png_player.play()
+			is_video_loaded = true
+			print("ProjectionSurface: Started PNG sequence playback for surface '", surface_name, "'")
+			return
+		else:
+			print("ProjectionSurface: PNG player meta exists but player is null!")
+	else:
+		print("ProjectionSurface: No PNG sequence player meta found")
+	
+	# Fall back to regular video player
 	if video_player and video_player.stream:
 		video_player.play()
 		is_video_loaded = true
@@ -1091,17 +1335,42 @@ func start_video_playback() -> void:
 		print("ProjectionSurface: Cannot start playback - no video loaded")
 
 func stop_video_playback() -> void:
-	"""Stop video playback for this surface"""
+	"""Stop video playback for this surface (supports both VideoStreamPlayer and PNGSequencePlayer)"""
+	# Check for PNG sequence player first
+	if has_meta("png_sequence_player"):
+		var png_player = get_meta("png_sequence_player")
+		if png_player:
+			png_player.stop()
+			print("ProjectionSurface: Stopped PNG sequence playback for surface '", surface_name, "'")
+			return
+	
+	# Fall back to regular video player
 	if video_player:
 		video_player.stop()
 		print("ProjectionSurface: Stopped video playback for surface '", surface_name, "'")
 
 func get_video_info() -> Dictionary:
-	"""Get video information for this surface"""
+	"""Get video information for this surface (supports both VideoStreamPlayer and PNGSequencePlayer)"""
+	# Check for PNG sequence player first
+	if has_meta("png_sequence_player"):
+		var png_player = get_meta("png_sequence_player")
+		if png_player:
+			return {
+				"has_video": true,
+				"file_path": video_file_path,
+				"is_playing": png_player.is_playing,
+				"is_png_sequence": true,
+				"frame_count": png_player.frame_count,
+				"current_frame": png_player.current_frame,
+				"frame_rate": png_player.frame_rate
+			}
+	
+	# Fall back to regular video player info
 	return {
 		"has_video": is_video_loaded,
 		"file_path": video_file_path,
-		"is_playing": video_player != null and video_player.is_playing() if video_player else false
+		"is_playing": video_player != null and video_player.is_playing() if video_player else false,
+		"is_png_sequence": false
 	}
 
 func get_corner_points_global() -> Array[Vector2]:
@@ -1251,7 +1520,19 @@ func _delete_surface() -> void:
 
 func _toggle_lock_surface() -> void:
 	"""Toggle surface lock state"""
+	var was_locked = is_locked
 	is_locked = !is_locked
+	
+
+	
+	# When locking, immediately stop any ongoing drag operations
+	if is_locked:
+
+		dragging_corner = -1
+		dragging_surface = false
+		dragging_transform_handle = TransformHandleType.NONE
+		selected_corner = -1  # Also clear keyboard selection
+	
 	queue_redraw()  # Refresh visual state
 	properties_changed.emit()
 	print("ProjectionSurface: Surface '", surface_name, "' is now ", "locked" if is_locked else "unlocked")

@@ -19,9 +19,9 @@ var is_output_active: bool = false
 # Grid settings (shared with main canvas)
 var is_grid_view: bool = true
 var grid_size: int = 20
-var grid_color: Color = Color(0.3, 0.3, 0.3, 0.5)  # Standard gray grid
-var background_color_black: Color = Color(0.0, 0.0, 0.0, 1.0)  # Pure black background (0x000000)
-var background_color_grid: Color = Color(0.2, 0.2, 0.2, 1.0)  # Dark gray grid background
+var grid_color: Color = Colors.GRID_LINES  # Use centralized color constants
+var background_color_black: Color = Colors.CANVAS_BLACK  # Use centralized color constants
+var background_color_grid: Color = Colors.CANVAS_GRID_BG  # Use centralized color constants
 
 # Render capture
 var main_canvas: Control = null
@@ -31,7 +31,9 @@ var render_texture: ImageTexture = null
 var update_count: int = 0
 var force_update_counter: int = 0
 
+# Signals
 signal output_window_closed
+signal output_resolution_changed(resolution: Vector2i)
 
 func force_surface_update() -> void:
 	"""Force a complete update of all surfaces - useful for debugging"""
@@ -208,7 +210,7 @@ func hide_output() -> void:
 	print("OutputWindow: Output stopped")
 
 func set_target_display(display_index: int) -> void:
-	"""Set the target display for output"""
+	"""Set the target display for output and automatically update resolution"""
 	var screen_count = DisplayServer.get_screen_count()
 	print("OutputWindow: Setting target display to ", display_index, " (total displays: ", screen_count, ")")
 	
@@ -218,34 +220,72 @@ func set_target_display(display_index: int) -> void:
 		display_index = 0
 	
 	target_display = display_index
+	
+	# Automatically get and set the display's full native resolution (not just usable area)
+	var screen_size = DisplayServer.screen_get_size(display_index)
+	var display_resolution = Vector2i(screen_size.x, screen_size.y)
+	
+	print("OutputWindow: Display ", display_index, " resolution: ", display_resolution)
+	set_output_resolution(display_resolution)
+	
 	_position_on_display(display_index)
 	
-	print("OutputWindow: Target display set to ", display_index)
+	print("OutputWindow: Target display set to ", display_index, " with resolution ", display_resolution)
 
 func set_output_resolution(resolution: Vector2i) -> void:
-	"""Set the output resolution"""
+	"""Set the output resolution and notify listeners"""
 	output_resolution = resolution
 	size = resolution
+	
+	# Emit signal to notify other systems (like canvas) of resolution change
+	output_resolution_changed.emit(resolution)
 	
 	print("OutputWindow: Resolution set to ", resolution)
 
 func toggle_fullscreen() -> void:
-	"""Toggle fullscreen mode"""
+	"""Toggle fullscreen mode with proper scaling and positioning"""
 	is_fullscreen = !is_fullscreen
 	
 	if is_fullscreen:
-		# Enter fullscreen
+		# Store windowed state for restoration
+		var windowed_size = size
+		var windowed_position = position
+		
+		# Enter fullscreen with proper content scaling
 		mode = Window.MODE_FULLSCREEN
 		borderless = true
 		status_label.visible = false
+		
+		# Ensure proper display positioning for fullscreen
+		_position_on_display(target_display)
+		
+		# Set content scale mode for better fullscreen rendering
+		content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+		
+		print("OutputWindow: Entered fullscreen on display ", target_display)
+		
 	else:
-		# Exit fullscreen  
+		# Exit fullscreen with proper restoration
 		mode = Window.MODE_WINDOWED
 		borderless = false
+		
+		# Restore original resolution and position
 		size = output_resolution
+		_position_on_display(target_display)
+		
 		status_label.visible = true
+		
+		# Reset content scaling for windowed mode
+		content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
+		
+		print("OutputWindow: Exited fullscreen - restored to ", output_resolution)
 	
-	print("OutputWindow: Fullscreen ", "enabled" if is_fullscreen else "disabled")
+	# Force a surface update to handle any scaling changes
+	if is_output_active:
+		force_surface_update()
+	
+	print("OutputWindow: Fullscreen transition complete - ", "enabled" if is_fullscreen else "disabled")
 
 func _position_on_display(display_index: int) -> void:
 	"""Position window on the specified display"""
@@ -334,8 +374,9 @@ func _render_canvas_content() -> void:
 		_create_output_surface(surface)
 	
 	# Debug info (reduced frequency to avoid spam)
-	if update_count % 300 == 0:  # Every 5 seconds
-		print("OutputWindow: Real-time render - ", surfaces.size(), " surfaces recreated")
+	# Commented out to reduce log noise
+	# if update_count % 300 == 0:  # Every 5 seconds
+	#	print("OutputWindow: Real-time render - ", surfaces.size(), " surfaces recreated")
 
 func _create_output_surface(source_surface) -> void:
 	"""Create an output version of a surface for clean display - REAL-TIME"""
@@ -361,6 +402,28 @@ func _create_output_surface(source_surface) -> void:
 		output_surface.set_meta("surface_color", source_surface.surface_color)
 	else:
 		output_surface.set_meta("surface_color", Color.WHITE)
+	
+	# Copy video alpha flag
+	if "video_has_alpha" in source_surface:
+		output_surface.set_meta("video_has_alpha", source_surface.video_has_alpha)
+	else:
+		output_surface.set_meta("video_has_alpha", false)
+	
+	# Copy chroma key properties
+	if "chroma_key_enabled" in source_surface:
+		output_surface.set_meta("chroma_key_enabled", source_surface.chroma_key_enabled)
+		output_surface.set_meta("chroma_key_color", source_surface.chroma_key_color)
+		output_surface.set_meta("chroma_key_threshold", source_surface.chroma_key_threshold)
+		output_surface.set_meta("chroma_key_smoothness", source_surface.chroma_key_smoothness)
+	else:
+		output_surface.set_meta("chroma_key_enabled", false)
+	
+	# Copy video player state for proper chroma key handling
+	if "video_player" in source_surface:
+		var is_active_video = source_surface.video_player != null and source_surface.video_player.is_playing()
+		output_surface.set_meta("is_from_active_video_player", is_active_video)
+	else:
+		output_surface.set_meta("is_from_active_video_player", false)
 	
 	# Copy video texture if available
 	if "video_texture" in source_surface and source_surface.video_texture != null:
@@ -399,22 +462,35 @@ func _setup_output_surface_geometry(output_surface: Control, corner_points: Arra
 	output_surface.set_meta("local_corners", _convert_to_local_coords(transformed_points, min_pos))
 
 func _transform_coordinates_to_output(canvas_points: Array) -> Array:
-	"""Transform coordinates from canvas space to output window space"""
+	"""Transform coordinates from canvas space to output window space with aspect ratio preservation"""
 	if main_canvas == null:
 		return canvas_points  # Return original if no canvas reference
 	
 	var canvas_size = main_canvas.size
 	var output_size = output_canvas.size
 	
-	# Calculate scale factors
-	var scale_x = output_size.x / canvas_size.x
-	var scale_y = output_size.y / canvas_size.y
+	# Use uniform scaling to preserve aspect ratio
+	# Scale based on the canvas's output bounds rect, not the full canvas
+	var canvas_output_rect = main_canvas._get_output_bounds_rect()
+	
+	# Calculate uniform scale factor based on the output bounds
+	var scale_x = output_size.x / canvas_output_rect.size.x
+	var scale_y = output_size.y / canvas_output_rect.size.y
+	var uniform_scale = min(scale_x, scale_y)  # Use the smaller scale to fit within output
+	
+	# Calculate centering offset for letterboxing/pillarboxing
+	var scaled_canvas_size = canvas_output_rect.size * uniform_scale
+	var offset = (output_size - scaled_canvas_size) * 0.5
 	
 	var transformed_points = []
 	for point in canvas_points:
+		# First adjust point relative to output bounds rect
+		var relative_point = point - canvas_output_rect.position
+		
+		# Apply uniform scaling
 		var transformed_point = Vector2(
-			point.x * scale_x,
-			point.y * scale_y
+			relative_point.x * uniform_scale + offset.x,
+			relative_point.y * uniform_scale + offset.y
 		)
 		transformed_points.append(transformed_point)
 	
@@ -442,54 +518,20 @@ func _setup_output_surface_texture(output_surface: Control, texture: Texture2D) 
 
 
 func _draw_output_surface(drawing_node: Control) -> void:
-	"""Custom draw function for output surfaces"""
+	"""Custom draw function for output surfaces using shared renderer"""
 	var parent_surface = drawing_node.get_parent()
 	if parent_surface == null:
 		return
 	
 	var corner_points = parent_surface.get_meta("local_corners", [])
-	var texture = null
-	if parent_surface.has_meta("video_texture"):
-		texture = parent_surface.get_meta("video_texture")
-	
-	var opacity = parent_surface.get_meta("surface_opacity", 1.0)
-	var surface_color = parent_surface.get_meta("surface_color", Color.WHITE)
-	
 	if corner_points.size() != 4:
 		return
 	
-	var points = PackedVector2Array(corner_points)
+	# Create render data from metadata using shared renderer
+	var render_data = SurfaceRenderer.create_render_data_from_meta(parent_surface, corner_points)
 	
-	if texture != null:
-		# Draw video texture with UV mapping and opacity
-		var uv_coords = PackedVector2Array([
-			Vector2(0, 0),      # Top-left UV
-			Vector2(1, 0),      # Top-right UV  
-			Vector2(1, 1),      # Bottom-right UV
-			Vector2(0, 1)       # Bottom-left UV
-		])
-		
-		# Apply opacity to vertex colors
-		var vertex_colors = PackedColorArray([
-			Color(1, 1, 1, opacity),
-			Color(1, 1, 1, opacity),
-			Color(1, 1, 1, opacity),
-			Color(1, 1, 1, opacity)
-		])
-		
-		# Draw the textured polygon with opacity
-		drawing_node.draw_polygon(points, vertex_colors, uv_coords, texture)
-	else:
-		# Draw solid color surface with opacity
-		var opaque_color = Color(surface_color.r, surface_color.g, surface_color.b, surface_color.a * opacity)
-		drawing_node.draw_colored_polygon(points, opaque_color)
-		
-		# Only draw border if opacity is high enough to be visible
-		if opacity > 0.1:
-			for i in range(points.size()):
-				var start = points[i]
-				var end = points[(i + 1) % points.size()]
-				drawing_node.draw_line(start, end, Color(1, 1, 1, opacity * 0.5), 1.0)
+	# Use shared renderer for consistent content rendering (no editor-specific UI)
+	SurfaceRenderer.render_surface_content(drawing_node, render_data)
 
 func get_available_displays() -> Array[Dictionary]:
 	"""Get information about available displays"""

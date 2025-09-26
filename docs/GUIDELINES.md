@@ -12,6 +12,49 @@ Core rules (must follow)
 - When producing code, include a short rationale and any trade-offs.
 - Follow Godot/GDScript style: snake_case for functions/variables, PascalCase for node types, avoid global singletons unless necessary.
 - **Save/Load Persistence**: All relevant features must be saveable and loadable with project files. Any new feature should include proper serialization/deserialization logic with robust error handling for different data formats.
+- **No Logic Duplication**: Never duplicate functionality across different input methods (mouse/keyboard) or event handlers. Create single, authoritative functions for operations and call them from all input sources. Example: surface editing should have one set of functions for move/select/transform operations called by both mouse and keyboard handlers.
+
+## Architectural Patterns for Anti-Duplication
+
+### Centralized Operations Pattern
+
+For any operations that can be triggered from multiple sources (mouse, keyboard, API calls), use this pattern:
+
+1. **Single Source of Truth**: Create `request_*` functions that validate permissions and call internal `_execute_*` functions
+2. **Input Method Agnostic**: All input handlers call the same centralized operations  
+3. **Consistent Validation**: Lock checks, bounds validation, and state management in one place
+
+Example (ProjectionSurface.gd):
+
+```gdscript
+# PUBLIC: All input methods call these
+func request_corner_move(corner_index: int, new_position: Vector2) -> bool
+func request_surface_move(offset: Vector2) -> bool
+
+# INTERNAL: Single implementation with validation
+func _execute_corner_move(corner_index: int, new_position: Vector2) -> bool
+func _execute_surface_move(offset: Vector2) -> bool
+```
+
+### Centralized Constants
+
+- Use `Colors.gd` for all color constants instead of hardcoding `Color(r,g,b,a)` values
+- Use utility classes like `FileDialogHelper.gd` for common UI patterns
+- Avoid duplicating magic numbers, file extensions, or format strings
+
+### Input Handler Consolidation
+
+When handling the same operation from multiple input sources:
+
+```gdscript
+# BAD: Duplicate logic in mouse and keyboard handlers
+func _gui_input(event): # mouse logic
+func handle_keyboard_input(event): # keyboard logic with same math
+
+# GOOD: Both call centralized operations
+func _gui_input(event): request_corner_move(index, position)
+func handle_keyboard_input(event): request_corner_move(index, position)
+```
 - Do not run, commit, or modify files without explicit user approval. Propose commits and commands; only run them if the user asks.
 
 Text-first Godot workflow (how to generate artifacts)
@@ -45,6 +88,7 @@ Video I/O & plugin guidance
 UI / UX guidance
 - Aim for a simple, discoverable, modern UI inspired by HeavyM/Resolume: clear top bar, large mapping canvas, inspector-style side panels for properties.
 - Provide `.tscn` and `.gd` scaffolds rather than GUI screenshots, so the user can edit in text mode.
+- **Editor/Output Rendering Consistency**: Any visual effects or filters (alpha channel, chroma key, etc.) must render identically in both the editor view and final output projection. The editor preview should accurately represent what the audience will see.
 
 Save/Load Implementation Best Practices
 - **Robust Data Serialization**: When implementing save/load for any feature, handle multiple data formats (Vector2 as Dictionary {"x":..., "y":...}, Array [x,y], or String representations)

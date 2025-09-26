@@ -28,6 +28,12 @@ var default_edge_tolerance: float = 8.0
 var default_handle_size: float = 10.0
 var default_handle_border_width: float = 2.0
 
+# Aspect ratio matching for output preview
+var target_output_resolution: Vector2i = Vector2i(1920, 1080)  # Default 16:9
+var show_output_bounds: bool = true  # Show visual bounds of output area
+var output_bounds_color: Color = Color(1.0, 0.5, 0.0, 0.7)  # Orange outline
+var maintain_aspect_ratio: bool = true  # Whether to enforce aspect ratio
+
 # Click handling
 var click_timer: Timer
 var pending_click_position: Vector2
@@ -406,17 +412,23 @@ func _on_surface_deselected() -> void:
 	surface_deselected.emit()
 
 func play_all_surface_videos() -> void:
-	"""Start playback on all surfaces that have video loaded"""
+	"""Start playback on all surfaces that have video loaded (supports both VideoStreamPlayer and PNGSequencePlayer)"""
 	for surface in surfaces:
-		if surface.video_player and surface.video_player.stream:
+		# Check for PNG sequence player first
+		if surface.has_meta("png_sequence_player"):
+			print("MappingCanvas: Starting PNG sequence playback for surface ", surface.surface_name)
+			surface.start_video_playback()
+		# Check for regular video player
+		elif surface.video_player and surface.video_player.stream:
+			print("MappingCanvas: Starting regular video playback for surface ", surface.surface_name)
 			surface.video_player.play()
 	print("MappingCanvas: Started playback on all surfaces with video")
 
 func stop_all_surface_videos() -> void:
-	"""Stop playback on all surfaces that have video loaded"""
+	"""Stop playback on all surfaces that have video loaded (supports both VideoStreamPlayer and PNGSequencePlayer)"""
 	for surface in surfaces:
-		if surface.video_player:
-			surface.video_player.stop()
+		# Use the surface's unified stop method which handles both player types
+		surface.stop_video_playback()
 	print("MappingCanvas: Stopped playback on all surfaces")
 
 func _start_surface_dragging(surface: ProjectionSurface, click_position: Vector2) -> void:
@@ -456,6 +468,10 @@ func _draw() -> void:
 			_draw_grid()
 	else:
 		draw_rect(Rect2(Vector2.ZERO, size), background_color_black)
+	
+	# Draw output bounds overlay if enabled
+	if show_output_bounds and maintain_aspect_ratio:
+		_draw_output_bounds()
 
 func _draw_grid() -> void:
 	"""Draw background grid for reference"""
@@ -480,6 +496,42 @@ func _draw_grid() -> void:
 	while y < size.y:
 		draw_line(Vector2(0, y), Vector2(size.x, y), grid_color, 1)
 		y += effective_grid_size
+
+func _draw_output_bounds() -> void:
+	"""Draw the output area bounds to show what will be visible in projection"""
+	var output_rect = _get_output_bounds_rect()
+	
+	# Draw the output area outline
+	draw_rect(output_rect, Color.TRANSPARENT, false, 3.0)  # Transparent fill
+	draw_rect(output_rect, output_bounds_color, false, 3.0)  # Orange border
+	
+	# Draw corner indicators
+	var corner_size = 20.0
+	var corners = [
+		output_rect.position,  # Top-left
+		Vector2(output_rect.position.x + output_rect.size.x, output_rect.position.y),  # Top-right
+		output_rect.position + output_rect.size,  # Bottom-right
+		Vector2(output_rect.position.x, output_rect.position.y + output_rect.size.y)   # Bottom-left
+	]
+	
+	for corner in corners:
+		# Draw small corner crosses
+		draw_line(corner + Vector2(-corner_size*0.5, 0), corner + Vector2(corner_size*0.5, 0), output_bounds_color, 2.0)
+		draw_line(corner + Vector2(0, -corner_size*0.5), corner + Vector2(0, corner_size*0.5), output_bounds_color, 2.0)
+	
+	# Draw aspect ratio label
+	var aspect_ratio = float(target_output_resolution.x) / float(target_output_resolution.y)
+	var label_text = str(target_output_resolution.x) + "x" + str(target_output_resolution.y) + " (" + "%.2f" % aspect_ratio + ":1)"
+	var label_pos = output_rect.position + Vector2(10, 25)
+	
+	# Draw background for text
+	var font = ThemeDB.fallback_font
+	var font_size = 14
+	var text_size = font.get_string_size(label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	draw_rect(Rect2(label_pos - Vector2(5, text_size.y + 2), text_size + Vector2(10, 4)), Color(0, 0, 0, 0.7))
+	
+	# Draw text
+	draw_string(font, label_pos, label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, output_bounds_color)
 
 func set_view_mode(grid_view: bool) -> void:
 	"""Set the canvas view mode and refresh display"""
@@ -518,6 +570,17 @@ func set_surface_transform_handles(transform_handle_size: float, transform_handl
 	for surface in surfaces:
 		surface.configure_transformation_handles(transform_handle_size, transform_handle_offset, Color.MAGENTA)
 		surface.set_transform_handles_visible(transform_handles_enabled)
+
+func set_target_aspect_ratio(resolution: Vector2i) -> void:
+	"""Set target output resolution and update canvas to match its aspect ratio"""
+	target_output_resolution = resolution
+	print("Canvas: Target aspect ratio set to ", resolution, " (", float(resolution.x) / float(resolution.y), ":1)")
+	
+	# Force a redraw to show the new output bounds
+	queue_redraw()
+	
+	# Update surface creation bounds to respect the aspect ratio
+	_update_surface_creation_bounds()
 
 func get_surface_selection_settings() -> Dictionary:
 	"""Get current surface selection settings"""
@@ -589,3 +652,65 @@ func _update_surface_order() -> void:
 	
 	# Update the surfaces array to match the new order
 	surfaces = sorted_surfaces
+
+func _update_surface_creation_bounds() -> void:
+	"""Update internal bounds for surface creation to respect aspect ratio"""
+	# This will be used when creating new surfaces to ensure they fit within the target output area
+	# For now, this is a placeholder for future enhancements
+	pass
+
+func handle_window_scaling_change() -> void:
+	"""Handle changes in window size for responsive canvas rendering"""
+	# Since we're not using content scaling, we get more workspace when window grows
+	# Just ensure handles remain at appropriate sizes for visibility
+	
+	# Get current window and calculate appropriate handle scaling based on window size
+	var window = get_window()
+	if window:
+		var window_size = window.size
+		var base_window_size = Vector2(1400, 900)  # Our default window size
+		var size_scale = min(window_size.x / base_window_size.x, window_size.y / base_window_size.y)
+		
+		# Clamp scale factor to reasonable bounds (handles shouldn't get too small or big)
+		var scale_factor = clamp(size_scale, 0.7, 2.0)
+		
+		print("Canvas: Window size ", window_size, " - using handle scale factor ", scale_factor)
+		
+		# Update handle sizes based on window size to maintain visibility
+		var scale_adjusted_handle_size = default_handle_size * scale_factor
+		var scale_adjusted_border_width = default_handle_border_width * scale_factor
+		
+		# Apply to all surfaces
+		for surface in surfaces:
+			surface.set_handle_appearance(scale_adjusted_handle_size, scale_adjusted_border_width)
+		
+		# Force redraw to apply scaling changes
+		queue_redraw()
+		
+		print("Canvas: Updated handle sizes for window scale factor ", scale_factor)
+
+func _get_output_bounds_rect() -> Rect2:
+	"""Calculate the rectangle representing the output area within the canvas"""
+	if not maintain_aspect_ratio:
+		return Rect2(Vector2.ZERO, size)
+	
+	var canvas_size = size
+	var target_aspect = float(target_output_resolution.x) / float(target_output_resolution.y)
+	var canvas_aspect = canvas_size.x / canvas_size.y
+	
+	var output_rect: Rect2
+	
+	if canvas_aspect > target_aspect:
+		# Canvas is wider than target - letterbox horizontally
+		var output_height = canvas_size.y
+		var output_width = output_height * target_aspect
+		var x_offset = (canvas_size.x - output_width) * 0.5
+		output_rect = Rect2(x_offset, 0, output_width, output_height)
+	else:
+		# Canvas is taller than target - letterbox vertically
+		var output_width = canvas_size.x
+		var output_height = output_width / target_aspect
+		var y_offset = (canvas_size.y - output_height) * 0.5
+		output_rect = Rect2(0, y_offset, output_width, output_height)
+	
+	return output_rect

@@ -5,6 +5,10 @@ extends AcceptDialog
 
 class_name AboutDialog
 
+# Explicit imports for brand system
+const Brand = preload("res://scripts/constants/Brand.gd")
+const BrandApplier = preload("res://scripts/utils/BrandApplier.gd")
+
 @onready var app_icon: TextureRect = $VBoxContainer/IconContainer/AppIcon
 @onready var app_name: Label = $VBoxContainer/InfoContainer/AppName
 @onready var app_version: Label = $VBoxContainer/InfoContainer/AppVersion
@@ -14,7 +18,30 @@ class_name AboutDialog
 func _ready() -> void:
 	"""Initialize the about dialog"""
 	setup_dialog()
+	apply_brand_styling()
 	load_app_info()
+
+func apply_brand_styling() -> void:
+	"""Apply brand styling to dialog elements"""
+	# Set dialog size using brand constants
+	BrandApplier.set_dialog_size(self, "default")
+	
+	# Apply brand typography
+	if app_name:
+		BrandApplier.set_font_size(app_name, "large")
+		BrandApplier.set_color(app_name, "text_primary", "font_color")
+	
+	if app_version:
+		BrandApplier.set_font_size(app_version, "normal")
+		BrandApplier.set_color(app_version, "text_secondary", "font_color")
+	
+	if app_description:
+		BrandApplier.set_font_size(app_description, "normal")
+		BrandApplier.set_color(app_description, "text_primary", "font_color")
+	
+	if copyright_label:
+		BrandApplier.set_font_size(copyright_label, "small")
+		BrandApplier.set_color(copyright_label, "text_muted", "font_color")
 
 func setup_dialog() -> void:
 	"""Configure dialog properties"""
@@ -22,7 +49,7 @@ func setup_dialog() -> void:
 	popup_window = true
 	initial_position = WINDOW_INITIAL_POSITION_CENTER_SCREEN_WITH_KEYBOARD_FOCUS
 	size = Vector2i(400, 300)
-	resizable = false
+	unresizable = true
 
 func load_app_info() -> void:
 	"""Load and display application information"""

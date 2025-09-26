@@ -40,6 +40,15 @@ var video_play_button: Button = null
 var video_pause_button: Button = null
 var video_stop_button: Button = null
 
+# Chroma Key UI References (created dynamically)
+var chroma_key_section: VBoxContainer = null
+var chroma_key_enabled_checkbox: CheckBox = null
+var chroma_key_color_picker: ColorPickerButton = null
+var chroma_key_threshold_slider: HSlider = null
+var chroma_key_threshold_label: Label = null
+var chroma_key_smoothness_slider: HSlider = null
+var chroma_key_smoothness_label: Label = null
+
 # Current surface reference
 var current_surface: ProjectionSurface = null
 
@@ -50,6 +59,7 @@ func _ready() -> void:
 	_create_layer_ui()
 	_create_delete_ui()
 	_create_video_ui()
+	_create_chroma_key_ui()
 	
 	# Apply consistent theming
 	_apply_theme_colors()
@@ -114,6 +124,11 @@ func show_surface_properties(surface: ProjectionSurface) -> void:
 	if video_section:
 		video_section.show()
 	
+	# Update and show chroma key display
+	_update_chroma_key_display()
+	if chroma_key_section:
+		chroma_key_section.show()
+	
 	# Show the properties container
 	visible = true
 
@@ -150,6 +165,10 @@ func clear_properties() -> void:
 	if video_section:
 		video_section.hide()
 	
+	# Hide chroma key section
+	if chroma_key_section:
+		chroma_key_section.hide()
+	
 	# Keep panel visible but show "No selection" message
 	visible = true
 
@@ -179,6 +198,9 @@ func _disconnect_signals() -> void:
 	
 	if delete_button and delete_button.pressed.is_connected(_on_delete_pressed):
 		delete_button.pressed.disconnect(_on_delete_pressed)
+	
+	# Disconnect chroma key signals
+	_disconnect_chroma_key_signals()
 
 func _on_name_changed(new_name: String) -> void:
 	"""Handle surface name change"""
@@ -494,6 +516,78 @@ func _create_video_ui() -> void:
 	video_stop_button.pressed.connect(_on_video_stop_pressed)
 	controls_container.add_child(video_stop_button)
 
+func _create_chroma_key_ui() -> void:
+	"""Create chroma key (green screen) UI elements dynamically"""
+	var properties_container = $ScrollContainer/VBoxContainer/SurfaceProperties
+	if not properties_container:
+		return
+	
+	# Add separator
+	var separator = HSeparator.new()
+	properties_container.add_child(separator)
+	
+	# Create chroma key section
+	chroma_key_section = VBoxContainer.new()
+	properties_container.add_child(chroma_key_section)
+	
+	# Chroma key section title
+	var chroma_title = Label.new()
+	chroma_title.text = "Chroma Key (Green Screen):"
+	chroma_title.add_theme_color_override("font_color", Colors.UI_TEXT_PRIMARY)
+	chroma_key_section.add_child(chroma_title)
+	
+	# Enable checkbox
+	chroma_key_enabled_checkbox = CheckBox.new()
+	chroma_key_enabled_checkbox.text = "Enable Chroma Key"
+	chroma_key_enabled_checkbox.add_theme_color_override("font_color", Colors.UI_TEXT_PRIMARY)
+	chroma_key_section.add_child(chroma_key_enabled_checkbox)
+	
+	# Color picker container
+	var color_container = HBoxContainer.new()
+	chroma_key_section.add_child(color_container)
+	
+	var color_label = Label.new()
+	color_label.text = "Key Color:"
+	color_label.add_theme_color_override("font_color", Colors.UI_TEXT_PRIMARY)
+	color_container.add_child(color_label)
+	
+	chroma_key_color_picker = ColorPickerButton.new()
+	chroma_key_color_picker.color = Color.GREEN
+	chroma_key_color_picker.custom_minimum_size = Vector2(60, 30)
+	color_container.add_child(chroma_key_color_picker)
+	
+	# Threshold slider
+	var threshold_container = VBoxContainer.new()
+	chroma_key_section.add_child(threshold_container)
+	
+	chroma_key_threshold_label = Label.new()
+	chroma_key_threshold_label.text = "Threshold: 10%"
+	chroma_key_threshold_label.add_theme_color_override("font_color", Colors.UI_TEXT_PRIMARY)
+	threshold_container.add_child(chroma_key_threshold_label)
+	
+	chroma_key_threshold_slider = HSlider.new()
+	chroma_key_threshold_slider.min_value = 0.0
+	chroma_key_threshold_slider.max_value = 100.0
+	chroma_key_threshold_slider.value = 10.0
+	chroma_key_threshold_slider.step = 1.0
+	threshold_container.add_child(chroma_key_threshold_slider)
+	
+	# Smoothness slider
+	var smoothness_container = VBoxContainer.new()
+	chroma_key_section.add_child(smoothness_container)
+	
+	chroma_key_smoothness_label = Label.new()
+	chroma_key_smoothness_label.text = "Smoothness: 5%"
+	chroma_key_smoothness_label.add_theme_color_override("font_color", Colors.UI_TEXT_PRIMARY)
+	smoothness_container.add_child(chroma_key_smoothness_label)
+	
+	chroma_key_smoothness_slider = HSlider.new()
+	chroma_key_smoothness_slider.min_value = 0.0
+	chroma_key_smoothness_slider.max_value = 50.0
+	chroma_key_smoothness_slider.value = 5.0
+	chroma_key_smoothness_slider.step = 0.5
+	smoothness_container.add_child(chroma_key_smoothness_slider)
+
 func _on_video_load_button_pressed() -> void:
 	"""Handle video load button press - delegate to surface"""
 	if current_surface:
@@ -567,6 +661,57 @@ func _update_button_states() -> void:
 	if is_paused:
 		video_pause_button.text = "Resume"
 		video_pause_button.button_pressed = true
+	else:
+		video_pause_button.text = "Pause"
+		video_pause_button.button_pressed = false
+
+func _update_chroma_key_display() -> void:
+	"""Update chroma key controls with current surface settings"""
+	if not current_surface:
+		return
+	
+	# Disconnect signals to prevent recursive updates
+	_disconnect_chroma_key_signals()
+	
+	# Update controls with current values
+	if chroma_key_enabled_checkbox:
+		chroma_key_enabled_checkbox.button_pressed = current_surface.chroma_key_enabled
+	
+	if chroma_key_color_picker:
+		chroma_key_color_picker.color = current_surface.chroma_key_color
+	
+	if chroma_key_threshold_slider and chroma_key_threshold_label:
+		chroma_key_threshold_slider.value = current_surface.chroma_key_threshold * 100.0
+		chroma_key_threshold_label.text = "Threshold: " + str(int(current_surface.chroma_key_threshold * 100)) + "%"
+	
+	if chroma_key_smoothness_slider and chroma_key_smoothness_label:
+		chroma_key_smoothness_slider.value = current_surface.chroma_key_smoothness * 100.0
+		chroma_key_smoothness_label.text = "Smoothness: " + str(int(current_surface.chroma_key_smoothness * 100)) + "%"
+	
+	# Reconnect signals
+	_connect_chroma_key_signals()
+
+func _connect_chroma_key_signals() -> void:
+	"""Connect chroma key control signals"""
+	if chroma_key_enabled_checkbox:
+		chroma_key_enabled_checkbox.toggled.connect(_on_chroma_key_enabled_toggled)
+	if chroma_key_color_picker:
+		chroma_key_color_picker.color_changed.connect(_on_chroma_key_color_changed)
+	if chroma_key_threshold_slider:
+		chroma_key_threshold_slider.value_changed.connect(_on_chroma_key_threshold_changed)
+	if chroma_key_smoothness_slider:
+		chroma_key_smoothness_slider.value_changed.connect(_on_chroma_key_smoothness_changed)
+
+func _disconnect_chroma_key_signals() -> void:
+	"""Disconnect chroma key control signals"""
+	if chroma_key_enabled_checkbox and chroma_key_enabled_checkbox.toggled.is_connected(_on_chroma_key_enabled_toggled):
+		chroma_key_enabled_checkbox.toggled.disconnect(_on_chroma_key_enabled_toggled)
+	if chroma_key_color_picker and chroma_key_color_picker.color_changed.is_connected(_on_chroma_key_color_changed):
+		chroma_key_color_picker.color_changed.disconnect(_on_chroma_key_color_changed)
+	if chroma_key_threshold_slider and chroma_key_threshold_slider.value_changed.is_connected(_on_chroma_key_threshold_changed):
+		chroma_key_threshold_slider.value_changed.disconnect(_on_chroma_key_threshold_changed)
+	if chroma_key_smoothness_slider and chroma_key_smoothness_slider.value_changed.is_connected(_on_chroma_key_smoothness_changed):
+		chroma_key_smoothness_slider.value_changed.disconnect(_on_chroma_key_smoothness_changed)
 
 func _apply_theme_colors() -> void:
 	"""Apply consistent theme colors throughout the panel"""
@@ -626,6 +771,36 @@ func _apply_theme_colors() -> void:
 		video_stop_button.add_theme_color_override("font_color", text_color)
 	if video_load_button:
 		video_load_button.add_theme_color_override("font_color", text_color)
-	else:
-		video_pause_button.text = "Pause"
-		video_pause_button.button_pressed = false
+	
+	# Apply to chroma key UI elements
+	if chroma_key_enabled_checkbox:
+		chroma_key_enabled_checkbox.add_theme_color_override("font_color", text_color)
+	if chroma_key_threshold_label:
+		chroma_key_threshold_label.add_theme_color_override("font_color", text_color)
+	if chroma_key_smoothness_label:
+		chroma_key_smoothness_label.add_theme_color_override("font_color", text_color)
+
+# Chroma key signal handlers
+func _on_chroma_key_enabled_toggled(enabled: bool) -> void:
+	"""Handle chroma key enable/disable toggle"""
+	if current_surface:
+		current_surface.set_chroma_key_enabled(enabled)
+
+func _on_chroma_key_color_changed(color: Color) -> void:
+	"""Handle chroma key color change"""
+	if current_surface:
+		current_surface.set_chroma_key_color(color)
+
+func _on_chroma_key_threshold_changed(value: float) -> void:
+	"""Handle chroma key threshold change"""
+	if current_surface:
+		current_surface.set_chroma_key_threshold(value / 100.0)  # Convert percentage to 0-1
+		if chroma_key_threshold_label:
+			chroma_key_threshold_label.text = "Threshold: " + str(int(value)) + "%"
+
+func _on_chroma_key_smoothness_changed(value: float) -> void:
+	"""Handle chroma key smoothness change"""
+	if current_surface:
+		current_surface.set_chroma_key_smoothness(value / 100.0)  # Convert percentage to 0-1
+		if chroma_key_smoothness_label:
+			chroma_key_smoothness_label.text = "Smoothness: " + str(int(value)) + "%"
